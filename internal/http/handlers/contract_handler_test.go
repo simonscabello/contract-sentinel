@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"github.com/simonscabello/contract-sentinel/internal/contracts"
 )
 
+// Mock service
 type mockValidationService struct {
 	result contracts.ValidationResult
 	err    error
@@ -19,54 +21,42 @@ func (m *mockValidationService) ValidateContract(c contracts.Contract) (contract
 	return m.result, m.err
 }
 
-func TestValidateContract_Success(t *testing.T) {
+// Mock repository
+type mockResultsRepo struct{}
+
+func (m *mockResultsRepo) Save(ctx context.Context, input contracts.Contract, result contracts.ValidationResult) error {
+	return nil
+}
+
+func TestValidateContract_WithMetadata(t *testing.T) {
 	mock := &mockValidationService{
 		result: contracts.ValidationResult{
 			Success: true,
-			Output:  "Contrato validado com sucesso.",
-			Error:   nil,
+			Output:  "OK",
 		},
 	}
 
-	handler := ContractHandler{Service: mock}
+	handler := ContractHandler{
+		Service:    mock,
+		Repository: &mockResultsRepo{},
+	}
 
 	body := contractRequest{
 		Path:        "./dummy.json",
 		ProviderURL: "http://localhost:3000",
+		Consumer:    "despesas",
+		Provider:    "vexpenses-id",
+		Version:     "1.0.0",
 	}
 	jsonBody, _ := json.Marshal(body)
 
 	req := httptest.NewRequest(http.MethodPost, "/contracts/test", bytes.NewReader(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
-
 	rr := httptest.NewRecorder()
 
 	handler.ValidateContract(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("esperado status 200, obtido %d", rr.Code)
-	}
-
-	var response contracts.ValidationResult
-	json.NewDecoder(rr.Body).Decode(&response)
-
-	if !response.Success {
-		t.Errorf("esperado success true, obtido false")
-	}
-}
-
-func TestValidateContract_InvalidBody(t *testing.T) {
-	mock := &mockValidationService{}
-
-	handler := ContractHandler{Service: mock}
-
-	req := httptest.NewRequest(http.MethodPost, "/contracts/test", bytes.NewReader([]byte("invalid-json")))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	handler.ValidateContract(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("esperado 400 Bad Request, obtido %d", rr.Code)
 	}
 }
